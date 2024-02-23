@@ -6,6 +6,8 @@
 #include <opencv2/imgproc.hpp>  // Gaussian Blur
 #include <opencv2/videoio.hpp>
 #include <opencv2/highgui.hpp>  // OpenCV window I/O
+#include <tesseract/baseapi.h>
+#include <leptonica/allheaders.h>
 using namespace std;
 using namespace cv;
 static void help() {
@@ -21,6 +23,14 @@ static void help() {
 }
 int main(int argc, char *argv[]) {
 	help();
+	char *outText;
+	string output;
+	tesseract::TessBaseAPI *api = new tesseract::TessBaseAPI();
+	// Initialize tesseract-ocr with English, without specifying tessdata path
+	if (api->Init(NULL, "eng")) {
+		fprintf(stderr, "Could not initialize tesseract.\n");
+		exit(1);
+	}
 	const string sourceReference = argv[1];
 	int frameNum = -1, delay = 10;          // Frame counter
 	VideoCapture captRefrnc(sourceReference); 
@@ -35,6 +45,8 @@ int main(int argc, char *argv[]) {
 	moveWindow(WIN_RF, 400       , 0);         //750,  2 (bernat =0)
 	cout << "Reference frame resolution: Width=" << refS.width << "  Height=" << refS.height << " of nr#: " << captRefrnc.get(CAP_PROP_FRAME_COUNT) << endl;
 	Mat frameReference;
+	Mat cpy;
+	Mat cropped;
 	for(;;) { //Show the image captured in the window and repeat
 		captRefrnc >> frameReference;
 		if (frameReference.empty()) {
@@ -42,9 +54,21 @@ int main(int argc, char *argv[]) {
 			break;
 		}
 		++frameNum;
-		cout << "Frame: " << frameNum << "# ";
-		cout << endl;
-		imshow(WIN_RF, frameReference);
+		// copiar frame
+		cpy = frameReference.clone();
+		// Setup a rectangle to define your region of interest
+		Rect myROI(0, 960, 960, 120);
+		// Crop the full image to that image contained by the rectangle myROI
+		Mat croppedRef(cpy, myROI);
+		// Copy the data into new matrix
+		croppedRef.copyTo(cropped);
+		//imshow(WIN_RF, frameReference);
+		imshow(WIN_RF, cropped);
+		api->SetImage((uchar*)cropped.data, cropped.size().width, cropped.size().height, cropped.channels(), cropped.step1());
+		api->Recognize(0);
+		outText = api->GetUTF8Text();
+		output = string(outText);
+		cout << output << endl;
 		char c = (char)waitKey(delay);
 		if (c == 27) break;
 	}
