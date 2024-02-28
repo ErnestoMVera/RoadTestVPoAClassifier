@@ -39,6 +39,7 @@ int main(int argc, char *argv[]) {
 	}
 	const string sourceReference = argv[1];
 	tesseract::TessBaseAPI *api = new tesseract::TessBaseAPI();
+	DatasetReader reader(argv[2]);
 	// Initialize tesseract-ocr with English, without specifying tessdata path
 	if (api->Init(NULL, "eng")) {
 		fprintf(stderr, "Could not initialize tesseract.\n");
@@ -55,7 +56,7 @@ int main(int argc, char *argv[]) {
 	// Windows
 	namedWindow(WIN_RF, WINDOW_AUTOSIZE);
 	//moveWindow(WIN_RF, 400       , 0);         //750,  2 (bernat =0)
-	cout << "Reference frame resolution: Width=" << refS.width << "  Height=" << refS.height << " of nr#: " << captRefrnc.get(CAP_PROP_FRAME_COUNT) << endl;
+	//cout << "Reference frame resolution: Width=" << refS.width << "  Height=" << refS.height << " of nr#: " << captRefrnc.get(CAP_PROP_FRAME_COUNT) << endl;
 	Mat frameReference;
 	Mat cropped;
 	for(;;) { 
@@ -71,8 +72,10 @@ int main(int argc, char *argv[]) {
 		//imshow(WIN_RF, cropped);
 		imshow(WIN_RF, frameReference);
 		output = recognize_ts(api, &cropped);
-		cout << output << endl;
+		//cout << output << endl;
 		char c = (char)waitKey(delay);
+		reader.nextpoint();
+		cout << "Timestamp: " << reader.getTimestampFormatted() << endl;
 		if (c == 27) break;
 	}
 	if(api) delete api;
