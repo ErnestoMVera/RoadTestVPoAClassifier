@@ -50,6 +50,13 @@ std::string DatasetReader::getTimestampFormatted() {
 	std::string output(tsFormatted);
 	return output;
 }
+std::string DatasetReader::getTimestampHour() {
+	time_t ts_local = timestamp/1000;
+	struct tm *t = localtime(&ts_local);
+	strftime(tsFormatted, BUFFERSIZE - 1, "%H:%M:%S", t);
+	std::string output(tsFormatted);
+	return output;
+}
 enum VPOA DatasetReader::getVPoA() {
 	return currentVpoa;
 }

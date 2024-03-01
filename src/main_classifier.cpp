@@ -1,17 +1,30 @@
-#include <iostream> // for standard I/O
-#include <string>   // for strings
-#include <iomanip>  // for controlling float print precision
-#include <sstream>  // string to number conversion
-#include <opencv2/core.hpp>     // Basic OpenCV structures (cv::Mat, Scalar)
-#include <opencv2/imgproc.hpp>  // Gaussian Blur
-#include <opencv2/videoio.hpp>
-#include <opencv2/highgui.hpp>  // OpenCV window I/O
-#include <tesseract/baseapi.h>
-#include <leptonica/allheaders.h>
+#include<iostream> // for standard I/O
+#include<string>   // for strings
+#include<iomanip>  // for controlling float print precision
+#include<sstream>  // string to number conversion
+#include<algorithm>  // string to number conversion
+#include<opencv2/core.hpp>     // Basic OpenCV structures (cv::Mat, Scalar)
+#include<opencv2/imgproc.hpp>  // Gaussian Blur
+#include<opencv2/videoio.hpp>
+#include<opencv2/highgui.hpp>  // OpenCV window I/O
+#include<tesseract/baseapi.h>
+#include<leptonica/allheaders.h>
+#include<unistd.h>
+#include<getopt.h>
+#include<ctype.h>
 #include "DatasetReader.h"
 using namespace std;
 using namespace cv;
+void usage();
 void crop_image(Mat* src, Mat* dest, int x, int y, int w, int h); 
+string recognize_first_frame(string videofilename);
+string recognize_ts(tesseract::TessBaseAPI* api, Mat* image);
+int isValidTimestamp(string ts);
+void usage() {
+	cout << "usage is classifier <video-file> <dataset-file>" << endl;
+	cout << "use -f or --firsttimestamp option to get first timestamp in a dataset file e.g. \n classifier -f <video-file> <dataset-file>" << endl;
+	cout << "use -o or --offset option to set an offset in the video file e.g. \n classifier -o n <video-file> <dataset-file>" << endl;
+}
 void crop_image(Mat* src, Mat* dest, int x, int y, int w, int h) {
 		// copiar frame
 		Mat cpy = src->clone();
@@ -22,6 +35,37 @@ void crop_image(Mat* src, Mat* dest, int x, int y, int w, int h) {
 		// Copy the data into new matrix
 		croppedRef.copyTo(*dest);
 }
+string recognize_first_frame(string videofilename, int offset) {
+	Mat frame, cropped;
+	Mat onlyhr;
+	int fps = 60;
+	string output;
+	string outhr;
+	tesseract::TessBaseAPI *api = new tesseract::TessBaseAPI();
+	if (api->Init(NULL, "eng")) {
+		fprintf(stderr, "Could not initialize tesseract.\n");
+		exit(1);
+	}
+	VideoCapture captRefrnc(videofilename); 
+	if (!captRefrnc.isOpened()) {
+		cout  << "Could not open video file " << videofilename << endl;
+		exit(1);
+	}
+	captRefrnc.set(CAP_PROP_POS_FRAMES, offset*fps);
+	captRefrnc >> frame;
+	crop_image(&frame, &cropped, 0, 960, 960, 120);
+	crop_image(&frame, &onlyhr, 420, 960, 335, 120);
+	outhr = recognize_ts(api, &onlyhr);
+	while(!isValidTimestamp(outhr)) {
+		captRefrnc >> frame;
+		crop_image(&frame, &onlyhr, 420, 960, 335, 120);
+		outhr = recognize_ts(api, &onlyhr);
+	}
+	crop_image(&frame, &cropped, 0, 960, 960, 120);
+	output = recognize_ts(api, &cropped);
+	if(api) delete api;
+	return output;
+}
 string recognize_ts(tesseract::TessBaseAPI* api, Mat* image) {
 	char *outText;
 	// set image to recognize and recognize
@@ -29,17 +73,78 @@ string recognize_ts(tesseract::TessBaseAPI* api, Mat* image) {
 	api->Recognize(0);
 	outText = api->GetUTF8Text();
 	return string(outText);
-
 }
-int main(int argc, char *argv[]) {
-	string output;
-	if(argc < 2) {
-		cout << "usage is classifier <video-file> <dataset-file>" << endl;
+int isValidTimestamp(string ts) {
+	int i;
+	string::iterator end_pos = std::remove(ts.begin(), ts.end(), ' ');
+	ts.erase(end_pos, ts.end());
+	string::iterator end_pos1 = std::remove(ts.begin(), ts.end(), '\n');
+	ts.erase(end_pos1, ts.end());
+	// the expected format is 00:00:00
+	if(ts.size() != 8) {
 		return 0;
 	}
-	const string sourceReference = argv[1];
+	else {
+		for(i = 0; i < 8; i++) {
+			if(i == 2 || i == 5) {
+				if(ts[i] != ':') return 0;	
+			}
+			else {
+				if(!isdigit(ts[i])) return 0;
+			}
+		}
+	}
+	return 1;
+}
+int main(int argc, char *argv[]) {
+	int opt, offset = 0;
+	int fps = 60;
+	string sourceReference, datasetFile;
+	if(argc < 2) {
+		usage();
+		return 0;
+	}
+	// parse options
+	// Get first timestamp in file with -f option
+	while(true) {
+		int option_index;
+		struct option long_options[] = {
+			{"firsttimestamp", required_argument, 0, 'f'},
+			{"offset", required_argument, 0, 'o'}
+		};
+		opt = getopt_long(argc, argv, "f:o:", long_options, &option_index);
+		if(opt == -1) {
+			break;
+		}
+		switch(opt) {
+			case 'f': {
+				sourceReference = argv[argc - 2];
+				datasetFile = argv[argc - 1];
+				DatasetReader readerOpt(datasetFile);
+				readerOpt.nextpoint();
+				cout << "Timestamp dataset: " << readerOpt.getTimestampFormatted() << endl;
+				cout << "Timestamp video: " << recognize_first_frame(sourceReference, offset) << endl;
+				return 0;
+				break;
+			}
+			case 'o':
+				offset = atoi(optarg);
+				break;
+			case '?':
+				usage();
+				return 0;
+				break;		
+			default:
+				usage();
+				return 0;
+				break;
+		}
+	}
+	sourceReference = argv[argc - 2];
+	datasetFile = argv[argc - 1];
+	string output;
 	tesseract::TessBaseAPI *api = new tesseract::TessBaseAPI();
-	DatasetReader reader(argv[2]);
+	DatasetReader reader(datasetFile);
 	// Initialize tesseract-ocr with English, without specifying tessdata path
 	if (api->Init(NULL, "eng")) {
 		fprintf(stderr, "Could not initialize tesseract.\n");
@@ -55,10 +160,11 @@ int main(int argc, char *argv[]) {
 	const char* WIN_RF = "Reference";
 	// Windows
 	namedWindow(WIN_RF, WINDOW_AUTOSIZE);
-	//moveWindow(WIN_RF, 400       , 0);         //750,  2 (bernat =0)
-	//cout << "Reference frame resolution: Width=" << refS.width << "  Height=" << refS.height << " of nr#: " << captRefrnc.get(CAP_PROP_FRAME_COUNT) << endl;
+	moveWindow(WIN_RF, 0, 0); //750,  2 (bernat =0)
 	Mat frameReference;
 	Mat cropped;
+	string time;
+	captRefrnc.set(CAP_PROP_POS_FRAMES, offset*fps);
 	for(;;) { 
 		//Show the image captured in the window and repeat
 		captRefrnc >> frameReference;
@@ -68,14 +174,26 @@ int main(int argc, char *argv[]) {
 		}
 		++frameNum;
 		// cut the image so that only the timestamp is focused
-		crop_image(&frameReference, &cropped, 0, 960, 960, 120);
-		//imshow(WIN_RF, cropped);
-		imshow(WIN_RF, frameReference);
+		// THIS LINE CROPS TO THE ENTIRE DATE AND TIME
+		// crop_image(&frameReference, &cropped, 0, 960, 960, 120);
+		// THIS LINE CROPS ONLY THE TIME
+		crop_image(&frameReference, &cropped, 420, 960, 335, 120);
+		imshow(WIN_RF, cropped);
+		//imshow(WIN_RF, frameReference);
 		output = recognize_ts(api, &cropped);
-		//cout << output << endl;
+		time = reader.getTimestampHour();
+		if(isValidTimestamp(output)) {
+			cout << "OCR: " << output << endl;
+			if(output.substr(6, 2) == time.substr(6, 2)) {
+				
+			}
+		}
+		else {
+			cout << "OCR: " << output << " (invalid)" <<endl;
+		}
+		cout << "DATASET: " << reader.getTimestampHour() << endl;
 		char c = (char)waitKey(delay);
 		reader.nextpoint();
-		cout << "Timestamp: " << reader.getTimestampFormatted() << endl;
 		if (c == 27) break;
 	}
 	if(api) delete api;

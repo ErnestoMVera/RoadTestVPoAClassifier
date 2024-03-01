@@ -26,6 +26,7 @@ class DatasetReader {
 		unsigned long long int getTimestampMilis(); // timestamp
 		enum VPOA getVPoA(); // spot
 		std::string getTimestampFormatted(); // timestamp
+		std::string getTimestampHour(); // timestamp
 	private:
 		char currentline[BUFFERSIZE];
 		char tsFormatted[BUFFERSIZE];
