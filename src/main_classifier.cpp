@@ -29,6 +29,7 @@ void usage() {
 	cout << "use -f or --firsttimestamp option to get first timestamp in a dataset file e.g. \n classifier -f <video-file> <dataset-file>" << endl;
 	cout << "use -o or --offset option to set an offset in the video file e.g. \n classifier -o n <video-file> <dataset-file>" << endl;
 	cout << "use -d or --datasetoffset option to set an offset in the dataset file e.g. \n classifier -d n <video-file> <dataset-file>" << endl;
+	cout << "use -v or --writevideo option to generate a classified video file e.g. \n classifier -v <video-file> <dataset-file>" << endl;
 }
 string trim_string(string s) {
 	string::iterator end_pos = std::remove(s.begin(), s.end(), ' ');
@@ -138,7 +139,7 @@ int isValidTimestamp(string ts) {
 int main(int argc, char *argv[]) {
 	int opt, offset = 0, offset_d = 0;
 	int fps = 60;
-	int freqSistema = 40;
+	int freqSistema = 40, writevideo = 0;
 	string sourceReference, datasetFile;
 	if(argc < 2) {
 		usage();
@@ -153,9 +154,10 @@ int main(int argc, char *argv[]) {
 		struct option long_options[] = {
 			{"firsttimestamp", no_argument, 0, 'f'},
 			{"offset", required_argument, 0, 'o'},
-			{"datasetoffset", required_argument, 0, 'd'}
+			{"datasetoffset", required_argument, 0, 'd'},
+			{"writevideo", no_argument, 0, 'v'}
 		};
-		opt = getopt_long(argc, argv, "fo:d:", long_options, &option_index);
+		opt = getopt_long(argc, argv, "fo:d:v", long_options, &option_index);
 		if(opt == -1) {
 			break;
 		}
@@ -179,6 +181,9 @@ int main(int argc, char *argv[]) {
 				break;
 			case 'd':
 				offset_d = atoi(optarg);
+				break;
+			case 'v':
+				writevideo = 1;
 				break;
 			case '?':
 				usage();
@@ -237,6 +242,11 @@ int main(int argc, char *argv[]) {
 		return 0;
 	}
 	char tsbuffer[16];
+	int vfourcc;
+	if(writevideo) {
+		vfourcc = VideoWriter::fourcc('m', 'p', '4', 'v');
+	}
+	VideoWriter videoToWrite("output.avi", vfourcc, fps, frameReference.size());
 	for(;;) { 
 		char c = (char)waitKey(delay);
 		if (c == 82) putText(frameReference, "CAMINO" ,Point2d(50, 300), FONT_HERSHEY_SIMPLEX, 2, 50, 3);
@@ -264,8 +274,14 @@ int main(int argc, char *argv[]) {
 			putText(frameReference, tsbuffer, Point2d(50, 50), FONT_HERSHEY_SIMPLEX, 2, 255, 3);
 			putText(frameReference, mapVPoA(reader.getVPoA()), Point2d(50, 150), FONT_HERSHEY_SIMPLEX, 2, 255, 3);
 		}
+		if(writevideo) {
+			videoToWrite.write(frameReference);
+		}
 		imshow(WIN_RF, frameReference);
 		captRefrnc >> frameReference;
+	}
+	if(writevideo) {
+		videoToWrite.release();
 	}
 	if(api) delete api;
 	return 0;
