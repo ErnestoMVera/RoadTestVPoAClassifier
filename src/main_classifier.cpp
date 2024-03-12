@@ -14,7 +14,8 @@
 #include<ctype.h>
 #include<cmath>
 #include<string.h>
-#include "DatasetReader.h"
+#include"DatasetReader.h"
+#include"AcuerdoWriter.h"
 using namespace std;
 using namespace cv;
 void usage();
@@ -30,6 +31,7 @@ void usage() {
 	cout << "use -o or --offset option to set an offset in the video file e.g. \n classifier -o n <video-file> <dataset-file>" << endl;
 	cout << "use -d or --datasetoffset option to set an offset in the dataset file e.g. \n classifier -d n <video-file> <dataset-file>" << endl;
 	cout << "use -v or --writevideo option to generate a classified video file e.g. \n classifier -v <video-file> <dataset-file>" << endl;
+	cout << "use -c or --classify option to generate a classified csv file e.g. \n classifier -c <video-file> <dataset-file>" << endl;
 }
 string trim_string(string s) {
 	string::iterator end_pos = std::remove(s.begin(), s.end(), ' ');
@@ -139,7 +141,8 @@ int isValidTimestamp(string ts) {
 int main(int argc, char *argv[]) {
 	int opt, offset = 0, offset_d = 0;
 	int fps = 60;
-	int freqSistema = 40, writevideo = 0;
+	int freqSistema = 40, writevideo = 0, classify = 0;
+	int frameNum = -1, delay = 10;          // Frame counter
 	string sourceReference, datasetFile;
 	if(argc < 2) {
 		usage();
@@ -155,9 +158,10 @@ int main(int argc, char *argv[]) {
 			{"firsttimestamp", no_argument, 0, 'f'},
 			{"offset", required_argument, 0, 'o'},
 			{"datasetoffset", required_argument, 0, 'd'},
+			{"classify", no_argument, 0, 'c'},
 			{"writevideo", no_argument, 0, 'v'}
 		};
-		opt = getopt_long(argc, argv, "fo:d:v", long_options, &option_index);
+		opt = getopt_long(argc, argv, "fo:d:vc", long_options, &option_index);
 		if(opt == -1) {
 			break;
 		}
@@ -182,6 +186,10 @@ int main(int argc, char *argv[]) {
 			case 'd':
 				offset_d = atoi(optarg);
 				break;
+			case 'c':
+				classify = 1;
+				delay = 50;
+				break;
 			case 'v':
 				writevideo = 1;
 				break;
@@ -203,7 +211,6 @@ int main(int argc, char *argv[]) {
 		fprintf(stderr, "Could not initialize tesseract.\n");
 		exit(1);
 	}
-	int frameNum = -1, delay = 10;          // Frame counter
 	VideoCapture captRefrnc(sourceReference); 
 	if (!captRefrnc.isOpened()) {
 		cout  << "Could not open reference " << sourceReference << endl;
@@ -247,14 +254,17 @@ int main(int argc, char *argv[]) {
 		vfourcc = VideoWriter::fourcc('m', 'p', '4', 'v');
 	}
 	VideoWriter videoToWrite("output.avi", vfourcc, fps, frameReference.size());
+	AcuerdoWriter writer("classified.csv");
+	string human;
 	for(;;) { 
 		char c = (char)waitKey(delay);
-		if (c == 82) putText(frameReference, "CAMINO" ,Point2d(50, 300), FONT_HERSHEY_SIMPLEX, 2, 50, 3);
-		if (c == 81) putText(frameReference, "IZQUIERDA" ,Point2d(50, 300), FONT_HERSHEY_SIMPLEX, 2, 50, 3);
-		if (c == 83) putText(frameReference, "DERECHA" ,Point2d(50, 300), FONT_HERSHEY_SIMPLEX, 2, 50, 3);
-		if (c == 84) putText(frameReference, "PIERNAS" ,Point2d(50, 300), FONT_HERSHEY_SIMPLEX, 2, 50, 3);
-		if (c == 'a') putText(frameReference, "AUDIOCLIMA" ,Point2d(50, 300), FONT_HERSHEY_SIMPLEX, 2, 50, 3);
-		if (c == 27) break;
+		if (c == 82) human = "CAMINO";
+		else if (c == 81) human = "IZQUIERDA";
+		else if (c == 83) human = "DERECHA";
+		else if (c == 84) human = "PIERNAS";
+		else if (c == 'a') human = "AUDIOCLIMA";
+		else if (c == 27) break;
+		putText(frameReference, human, Point2d(50, 300), FONT_HERSHEY_SIMPLEX, 2, 50, 3);
 		if (frameReference.empty()) {
 			cout << " < < <  Game over!  > > > ";
 			break;
@@ -271,8 +281,13 @@ int main(int argc, char *argv[]) {
 		if(frameNum % 3 < 2) {
 			reader.nextpoint();
 			snprintf(&tsbuffer[0], (int) log(reader.getTimestampMilis()), "%lld", reader.getTimestampMilis());
-			putText(frameReference, tsbuffer, Point2d(50, 50), FONT_HERSHEY_SIMPLEX, 2, 255, 3);
-			putText(frameReference, mapVPoA(reader.getVPoA()), Point2d(50, 150), FONT_HERSHEY_SIMPLEX, 2, 255, 3);
+			if(classify) {
+				writer.writeNextPoint(reader.getTimestampMilis(), mapVPoA(reader.getVPoA()), human);
+			}
+			else {
+				putText(frameReference, tsbuffer, Point2d(50, 50), FONT_HERSHEY_SIMPLEX, 2, 255, 3);
+				putText(frameReference, mapVPoA(reader.getVPoA()), Point2d(50, 150), FONT_HERSHEY_SIMPLEX, 2, 255, 3);
+			}
 		}
 		if(writevideo) {
 			videoToWrite.write(frameReference);
@@ -282,6 +297,9 @@ int main(int argc, char *argv[]) {
 	}
 	if(writevideo) {
 		videoToWrite.release();
+	}
+	if(classify) {
+		writer.closeFile();
 	}
 	if(api) delete api;
 	return 0;
