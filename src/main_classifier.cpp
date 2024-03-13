@@ -32,6 +32,7 @@ void usage() {
 	cout << "use -d or --datasetoffset option to set an offset in the dataset file e.g. \n classifier -d n <video-file> <dataset-file>" << endl;
 	cout << "use -v or --writevideo option to generate a classified video file e.g. \n classifier -v <video-file> <dataset-file>" << endl;
 	cout << "use -c or --classify option to generate a classified csv file e.g. \n classifier -c <video-file> <dataset-file>" << endl;
+	cout << "use the spacebar to pause the process while classifying." << endl;
 }
 string trim_string(string s) {
 	string::iterator end_pos = std::remove(s.begin(), s.end(), ' ');
@@ -143,6 +144,7 @@ int main(int argc, char *argv[]) {
 	int fps = 60;
 	int freqSistema = 40, writevideo = 0, classify = 0;
 	int frameNum = -1, delay = 10;          // Frame counter
+	int pause_flag = 0;
 	string sourceReference, datasetFile;
 	if(argc < 2) {
 		usage();
@@ -263,7 +265,12 @@ int main(int argc, char *argv[]) {
 		else if (c == 83) human = "DERECHA";
 		else if (c == 84) human = "PIERNAS";
 		else if (c == 'a') human = "AUDIOCLIMA";
+		else if (c == 32) pause_flag = !pause_flag;
 		else if (c == 27) break;
+		while(pause_flag) {
+			c = (char)waitKey(delay);
+			if (c == 32) pause_flag = !pause_flag;
+		}
 		putText(frameReference, human, Point2d(50, 300), FONT_HERSHEY_SIMPLEX, 2, 50, 3);
 		if (frameReference.empty()) {
 			cout << " < < <  Game over!  > > > ";
